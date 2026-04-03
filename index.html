@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PDS Register Pro Max - V23 (Bug Fixed)</title>
+    <title>PDS Register Pro Max - V24 (Camera Fix)</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -579,7 +579,7 @@
             if(confirm("Logout from this device? Data is safe in cloud.")) auth.signOut();
         }
 
-        // --- 4. FIREBASE SYNC LOGIC (ANTI-CRASH BUG FIX) ---
+        // --- 4. FIREBASE SYNC LOGIC ---
         function loadDataFromFirebase() {
             const syncOverlay = document.getElementById('sync-overlay');
             document.getElementById('sync-text').innerText = "Loading your Cloud Data...";
@@ -619,10 +619,10 @@
             db.ref('users/' + currentUser.uid).set(dataToSync);
         }
 
-        // --- 5. IMGBB UPLOAD LOGIC (SECURITY LOCK REMOVED) ---
+        // --- 5. IMGBB UPLOAD LOGIC (V24: FileReader Bypassed completely to fix Blob error) ---
         async function processPhoto(e, type) {
+            if (!e.target || !e.target.files || e.target.files.length === 0) return;
             const file = e.target.files;
-            if(!file) return;
 
             const overlay = document.getElementById('sync-overlay');
             const overlayText = document.getElementById('sync-text');
@@ -630,44 +630,42 @@
             overlay.style.display = 'flex';
 
             try {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.onload = async function() {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 400; const scaleSize = MAX_WIDTH / img.width;
-                        canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
-                        const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        const base64 = canvas.toDataURL('image/jpeg', 0.6);
-                        
-                        document.getElementById('prev-' + type).src = base64;
-                        document.getElementById('prev-' + type).style.display = 'block';
+                const img = new Image();
+                img.onload = async function() {
+                    URL.revokeObjectURL(img.src); // Free memory
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 400; const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d'); 
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const base64 = canvas.toDataURL('image/jpeg', 0.6);
+                    
+                    document.getElementById('prev-' + type).src = base64;
+                    document.getElementById('prev-' + type).style.display = 'block';
 
-                        try {
-                            const base64Data = base64.split(',');
-                            const formData = new FormData(); formData.append("image", base64Data);
-                            const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: "POST", body: formData });
-                            const json = await res.json();
-                            
-                            if(json.success) {
-                                currentSignatures[type] = json.data.url; 
-                                document.getElementById('btn-clear-' + type).style.display = 'inline-block';
-                            } else throw new Error("API Fails");
-                        } catch(err) {
-                            alert("Cloud Upload Failed! Check Internet."); clearSignature(type);
-                        } finally { 
-                            overlay.style.display = 'none';
-                        }
-                    }
-                    img.onerror = function() {
+                    try {
+                        const base64Data = base64.split(',');
+                        const formData = new FormData(); formData.append("image", base64Data);
+                        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: "POST", body: formData });
+                        const json = await res.json();
+                        
+                        if(json.success) {
+                            currentSignatures[type] = json.data.url; 
+                            document.getElementById('btn-clear-' + type).style.display = 'inline-block';
+                        } else throw new Error("API Fails");
+                    } catch(err) {
+                        alert("Cloud Upload Failed! Check Internet."); clearSignature(type);
+                    } finally { 
                         overlay.style.display = 'none';
-                        alert("Error: यह फाइल फोटो नहीं है!");
-                        clearSignature(type);
                     }
-                    img.src = event.target.result;
                 }
-                reader.onerror = function() { overlay.style.display = 'none'; alert("File Read Error"); };
-                reader.readAsDataURL(file);
+                img.onerror = function() {
+                    overlay.style.display = 'none';
+                    alert("Error: यह फाइल सपोर्ट नहीं कर रही। कृपया दूसरी फोटो लें।");
+                    clearSignature(type);
+                }
+                // Magic Fix: Bypass FileReader entirely!
+                img.src = URL.createObjectURL(file); 
             } catch(error) {
                 overlay.style.display = 'none';
                 alert("File Error! " + error.message);
@@ -684,8 +682,8 @@
         }
 
         async function handleLogoUpload(e) {
+            if (!e.target || !e.target.files || e.target.files.length === 0) return;
             const file = e.target.files; 
-            if(!file) return;
 
             const overlay = document.getElementById('sync-overlay');
             const overlayText = document.getElementById('sync-text');
@@ -693,36 +691,33 @@
             overlay.style.display = 'flex';
 
             try {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.onload = async function() {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 200; const scaleSize = MAX_WIDTH / img.width;
-                        canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
-                        const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        const base64 = canvas.toDataURL('image/png');
+                const img = new Image();
+                img.onload = async function() {
+                    URL.revokeObjectURL(img.src);
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 200; const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d'); 
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const base64 = canvas.toDataURL('image/png');
 
-                        try {
-                            const base64Data = base64.split(',');
-                            const formData = new FormData(); formData.append("image", base64Data);
-                            const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: "POST", body: formData });
-                            const json = await res.json();
-                            if(json.success) {
-                                settings.logo = json.data.url;
-                                syncToFirebaseSilent(); initApp(); alert("Logo Cloud Upload Success!");
-                            } else throw new Error();
-                        } catch(err) { alert("Logo Upload Failed."); } 
-                        finally { overlay.style.display = 'none'; }
-                    }
-                    img.onerror = function() {
-                        overlay.style.display = 'none';
-                        alert("Error: यह फाइल फोटो नहीं है!");
-                    }
-                    img.src = event.target.result;
+                    try {
+                        const base64Data = base64.split(',');
+                        const formData = new FormData(); formData.append("image", base64Data);
+                        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: "POST", body: formData });
+                        const json = await res.json();
+                        if(json.success) {
+                            settings.logo = json.data.url;
+                            syncToFirebaseSilent(); initApp(); alert("Logo Cloud Upload Success!");
+                        } else throw new Error();
+                    } catch(err) { alert("Logo Upload Failed."); } 
+                    finally { overlay.style.display = 'none'; }
                 }
-                reader.onerror = function() { overlay.style.display = 'none'; alert("File Read Error"); };
-                reader.readAsDataURL(file);
+                img.onerror = function() {
+                    overlay.style.display = 'none';
+                    alert("Error: यह फाइल सपोर्ट नहीं कर रही। कृपया दूसरी फोटो लें।");
+                }
+                img.src = URL.createObjectURL(file);
             } catch(error) {
                 overlay.style.display = 'none';
                 alert("File Error! " + error.message);
@@ -756,11 +751,8 @@
             document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
             document.getElementById('page-' + id).classList.remove('hidden');
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-            
-            // BUG FIX: Removed event.currentTarget to prevent crash on auto-load
             let activeTab = document.querySelector(`a[onclick="nav('${id}')"]`);
             if(activeTab) activeTab.classList.add('active');
-
             if(id === 'print') loadPrint();
         }
 
